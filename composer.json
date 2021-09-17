@@ -1,0 +1,12 @@
+{
+    "name": "rjcalifornia/elgg_endpoints",
+	"type": "elgg-plugin",
+	"description": "Exposing basic endpoints plugin",
+	"license": "GPL-2.0-only",
+	"keywords": ["content", "widget"],
+	"homepage": "https://elgg.org",
+
+    "require": {
+        
+    }
+}
