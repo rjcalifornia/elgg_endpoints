@@ -47,16 +47,17 @@ function getObject($guid){
 	return $object;
 }
 
-function ws_pack_river_get($filter, $guids = array(), $offset = 0, $limit = 25, $posted_time_lower = 0) {
+//This function gets all activity items
+//Sends a JSON with the specified quantity of items
+function getRiverActivityItems($filter, $limit) {
 	$result = false;
-	
+	$offset = 0;
 	$dbprefix = elgg_get_config("dbprefix");
 	
 	// default options
 	$options = array(
 		"offset" => $offset,
 		"limit" => $limit,
-		"posted_time_lower" => $posted_time_lower,
 		"joins" => array(
 			"JOIN " . $dbprefix . "entities sue ON rv.subject_guid = sue.guid",
 			"JOIN " . $dbprefix . "entities obe ON rv.object_guid = obe.guid"
@@ -66,7 +67,7 @@ function ws_pack_river_get($filter, $guids = array(), $offset = 0, $limit = 25, 
 		)
 	);
 	
-	// what to return
+	//Get the filter from the request and send the items accordingly
 	switch ($filter) {
 		case "mine":
 			$options["subject_guid"] = elgg_get_logged_in_user_guid();
@@ -79,7 +80,6 @@ function ws_pack_river_get($filter, $guids = array(), $offset = 0, $limit = 25, 
 			break;
 		case "groups":
 			if (empty($guids)) {
-				// get group guids
 				$group_options = array(
 					"type" => "group",
 					"relationship" => "member",
@@ -91,12 +91,11 @@ function ws_pack_river_get($filter, $guids = array(), $offset = 0, $limit = 25, 
 				$guids = elgg_get_entities_from_relationship($group_options);
 			}
 			
-			// check if there are groups
 			if (!empty($guids)) {
 				$options["joins"] = array("JOIN " . $dbprefix . "entities e ON rv.object_guid = e.guid");
 				$options["wheres"] = array("(rv.object_guid IN (" . implode(",", $guids) . ") OR e.container_guid IN (" . implode(",", $guids) . "))");
 			} else {
-				// no groups found, so make sure not to return anything
+				
 				$options = false;
 			}
 			
@@ -116,74 +115,107 @@ function ws_pack_river_get($filter, $guids = array(), $offset = 0, $limit = 25, 
 	if ($result === false) {
 		$result = new ErrorResult(elgg_echo("river:none"), WS_PACK_API_NO_RESULTS);
 	}
-	$payment = array();
+	
+	//Extract the information of the river items
+	//Right now we only have guids
+	$payload = extractRiverItems($result);
+
+	return $payload;
+//return $result;
+}
+
+function extractRiverItems($result){
+	$payload = array();
 	foreach($result as $row) {
 		$test = get_entity($row->object_guid);
 
 		$objectType = trim(substr($row->view, strpos($row->view, '/') + 8));
 		
 		if($objectType == 'thewire/create'){
-		$payment[] = array(
+		$payload[] = array(
 			'action_type' => $row->action_type,
 			'object_type' => 'thewire',
+			'guid' => $test->guid,
 			//'title' => $test->title,
 			'description' => $test->description,
 			
 		);
 	}
 
+	//Format the comment activity so that the app can display it correctly
+	if($objectType == 'comment/create'){
+		$target_object = get_entity($row->target_guid);
+
+		//Strip all HTML tags from the description for proper visualization in the app
+		$commentDescription = strip_tags($test->description);
+
+		$payload[] = array(
+			'action_type' => $row->action_type,
+			'object_type' => $test->getSubtype(),
+			'guid' => $test->guid,
+			'target_name' =>  $target_object->title,
+			'target_guid' =>  $target_object->guid,
+			//Strip new lines from the description for proper visualization in the app
+			'description' =>  trim(preg_replace('/\s+/', ' ', $commentDescription)),
+			
+		);
+	}
+
 	if($objectType == 'blog/create'){
-		$payment[] = array(
+		$payload[] = array(
 			'guid' => $test->guid,
 			'action_type' => $row->action_type,
-			'object_type' => 'blog',
+			'object_type' => $test->getSubtype(),
 			'title' => $test->title,
 			'description' => strip_tags($test->excerpt),
 			
 		);
 	}
+
+	//For files?
+	if($test->getSubtype() == 'file'){
+		$fileDescription = strip_tags($test->description);
+		$payload[] = array(
+			'guid' => $test->guid,
+			'action_type' => $row->action_type,
+			'object_subtype' => $test->getSubtype(),
+		//	'target_guid' =>  $test->getSubtype(),
+			'title' => $test->title,
+			'description' => trim(preg_replace('/\s+/', ' ', $fileDescription)),
+			
+		);
 	}
-	return $payment;
-return $result;
+	}
+
+	return $payload;
 }
-	elgg_ws_expose_function(
+
+
+//River activity Endpoint
+//It handles: all/mine/friends/groups
+elgg_ws_expose_function(
 		"river.get",
-		"ws_pack_river_get",
+		"getRiverActivityItems",
 		array(
 			"filter" => array(
 				"type" => "string",
 				"required" => true
 			),
-			"guids" => array(
-				"type" => "array",
-				"required" => false,
-				"default" => array()
-			),
-			"offset" => array(
-				"type" => "int",
-				"required" => false,
-				"default" => 0
-			),
+
 			"limit" => array(
 				"type" => "int",
-				"required" => false,
-				"default" => 25
+				"required" => true,
+				//"default" => 25
 			),
-			"posted_time_lower" => array(
-				"type" => "int",
-				"required" => false,
-				"default" => 0
-			)
+
 		),
-		elgg_echo("ws_pack:api:river:get"),
+		elgg_echo("elgg_points:api:river:get"),
 		"GET",
 		true,
 		true
 	);
-
+/*
 	function ws_pack_export_river_items($items) {
-		//elgg_load_library("simple_html_dom");
-		
 		$result = false;
 		
 		if (!empty($items) && is_array($items)) {
@@ -228,7 +260,7 @@ return $result;
 		
 		return $result;
 	}
-	
+	*/
 	/**
 	 * Converts rows to guids
 	 *
