@@ -4,10 +4,15 @@ elgg_ws_expose_function(
     "create_thewire.post",
     "createWireStatus",
     array(
-        "body" => array(
+        "body" => [
             "type" => "string",
             "required" => true
-        ),
+        ],
+
+        "privacy" => [
+            "type" => "string",
+            "required" => true
+        ],
 
         
 
@@ -33,13 +38,13 @@ elgg_ws_expose_function(
     true
 );
 
-function createWireStatus($body) {
+function createWireStatus($body, $privacy) {
 
     $user = get_entity(elgg_get_logged_in_user_guid());
 
     $parent = 0;
 
-    $guid = thewire_save_post($body, elgg_get_logged_in_user_guid(), ACCESS_PUBLIC, $parent, 'site');
+    $guid = thewire_save_post($body, elgg_get_logged_in_user_guid(), $privacy, $parent, 'site');
 
     if ($guid === false) {
         return elgg_error_response(elgg_echo('thewire:notsaved'));
